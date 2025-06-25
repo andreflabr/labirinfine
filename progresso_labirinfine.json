@@ -1,0 +1,14 @@
+{
+    "fase_atual": 1,
+    "pontuacao_total": 0,
+    "melhor_fase": 1,
+    "total_inimigos_derrotados": 0,
+    "total_perguntas_respondidas": 0,
+    "total_acertos": 0,
+    "tempo_total_jogado": 2,
+    "data_ultimo_jogo": "2025-06-24 22:56:33",
+    "configuracoes": {
+        "som_ativo": true,
+        "dificuldade_personalizada": false
+    }
+}
