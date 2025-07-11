@@ -56,9 +56,16 @@ class ConfiguracaoFase:
     def _calcular_num_inimigos(self):
         return min(3 + self.numero * 2, 15)
     
-    # numero de fases ele calcula as vidas do inimigo, mas acho que nao ta funcionando muito bem ainda, preciso arrumar
     def _calcular_vidas_inimigo(self):
-        return 1 + (self.numero - 1) // 3
+        # Fases 1-3: 1 vida (inimigos vermelhos)
+        if self.numero <= 3:
+            return 1
+        # Fases 4-7: 3 vidas (inimigos laranjas)
+        elif self.numero <= 7:
+            return 3
+        # Fases 8+: 5 vidas (inimigos roxos)
+        else:
+            return 5
     
     # e de acordo com a fase vai tendo mais operações matematicas complexas
     def _definir_operacoes(self):
@@ -77,14 +84,15 @@ class ConfiguracaoFase:
     def _calcular_max_numero(self):
         return min(10 + self.numero * 5, 100)
     
-    # esse de tempo é para responder o quiz, coloquei pra quando tiver tempo marcar no inimigo 2 ou 3 se tiver 15s ou 10s respectivamente
+    # esse de tempo é para responder o quiz, baseado nas vidas do inimigo
     def _calcular_tempo_quiz(self):
-        if self.numero <= 3:
-            return None
-        elif self.numero <= 6:
-            return 15
+        vidas = self.vidas_inimigo
+        if vidas == 1:
+            return None  # Sem tempo limite para inimigos de 1 vida
+        elif vidas == 3:
+            return 15    # 15 segundos para inimigos de 3 vidas
         else:
-            return 10
+            return 10    # 10 segundos para inimigos de 5 vidas
     
     # as vidas é mesma coisa, começa com 5 e de acordo com fase vai mudando
     def _calcular_vidas_jogador(self):
@@ -156,6 +164,10 @@ class SistemaProgresso:
         except Exception as e:
             print(f"Erro ao resetar progresso: {e}")
             return False
+    
+    # Verifica se existe um save
+    def tem_save(self):
+        return os.path.exists(self.arquivo_save)
 
 # o menu tem como usar as setas, o mouse, ou o teclado pra selectionar a opção
 class MenuNavegavel:
@@ -238,7 +250,6 @@ class MenuNavegavel:
             
             texto = fonte_media.render(opcao["texto"], True, cor)
             tela.blit(texto, (LARGURA//2 - texto.get_width()//2, y_inicial + i * 50))
-
 
 # aqui gera o labirinto com um algoritmo de prim meio que modificado lkkkk tive ajuda do chat gpt pra fazer isso funcionar
 '''
@@ -387,18 +398,28 @@ class Jogador:
 
 # clase do inimigo
 '''
-pensei o seguinte, quando eu errar o quiz e nao conseguir matar o inimigo, ele é teleportado pra um lugar aleatorio do labirinto, podendo ir pra sua frente de novo ou pra tras
-se matar o inimigo aí ele some 100% 
-
+agora os inimigos nao teleportam mais, eles ficam no lugar e perdem vidas quando acerta o quiz
+quando todas as vidas acabam, eles sao removidos do labirinto
+cada tipo de inimigo tem uma cor diferente baseada nas vidas
 '''
 class Inimigo:
     def __init__(self, labirinto, vidas=1):
         self.vidas = vidas
         self.vidas_maximas = vidas
-        self.teleportar(labirinto)
+        self.cor = self._definir_cor()
+        self._posicionar_no_labirinto(labirinto)
     
-    # função de teleportar quando errar o quiz 
-    def teleportar(self, labirinto):
+    # Define a cor baseada no número de vidas
+    def _definir_cor(self):
+        if self.vidas == 1:
+            return VERMELHO  # 1 vida: vermelho
+        elif self.vidas == 3:
+            return LARANJA   # 3 vidas: laranja
+        else:
+            return ROXO      # 5 vidas: roxo
+    
+    # posiciona o inimigo aleatoriamente no labirinto
+    def _posicionar_no_labirinto(self, labirinto):
         tentativas = 0
         while tentativas < 100:
             x = random.randint(1, len(labirinto[0])-2)
@@ -545,16 +566,20 @@ class Jogo:
         self.inicializar_menus()
         self.iniciar_fase()
         
-    # inicia os menus de navegaçcao
     def inicializar_menus(self):
-        opcoes_menu = [
-            {"texto": "Continuar Jogo" if self.fase_atual > 1 else "Novo Jogo", "acao": "continuar"},
+        opcoes_menu = []
+        
+        # Só mostra "Continuar" se existir um save
+        if self.sistema_progresso.tem_save():
+            opcoes_menu.append({"texto": "Continuar Jogo", "acao": "continuar"})
+        
+        opcoes_menu.extend([
             {"texto": "Novo Jogo", "acao": "novo_jogo"},
             {"texto": "Instruções", "acao": "instrucoes"},
             {"texto": "Estatísticas", "acao": "estatisticas"},
             {"texto": "Resetar Progresso", "acao": "resetar"},
             {"texto": "Sair", "acao": "sair"}
-        ]
+        ])
         
         self.menu_principal = MenuNavegavel(opcoes_menu, "LABIRINFINE")
         
@@ -585,6 +610,7 @@ class Jogo:
         if self.sistema_progresso.resetar_progresso():
             self.carregar_progresso()
             self.iniciar_fase()
+            self.inicializar_menus()  # Reinicializa o menu após resetar
             return True
         return False
     
@@ -616,8 +642,10 @@ class Jogo:
         self.salvar_progresso()
         self.iniciar_fase()
     
-    # verifica as colisoes com os inimigos 
     def verificar_colisao(self):
+        if self.estado == "QUIZ" or self.interface_quiz is not None:
+            return None
+            
         for inimigo in self.inimigos:
             if self.jogador.x == inimigo.x and self.jogador.y == inimigo.y:
                 return inimigo
@@ -625,6 +653,9 @@ class Jogo:
     
     # inicia o quiz, gera a pergunta e alternativas e cria a interface do quiz
     def iniciar_quiz(self, inimigo):
+        if self.interface_quiz is not None or self.estado == "QUIZ":
+            return
+            
         pergunta, resposta = self.gerador_quiz.gerar_pergunta()
         alternativas = self.gerador_quiz.gerar_alternativas(resposta)
         self.interface_quiz = InterfaceQuiz(
@@ -636,30 +667,36 @@ class Jogo:
     
     # aqui processa a resposta que o jogador deu
     def processar_resposta_quiz(self, resposta_correta):
+        if self.inimigo_ativo is None or self.interface_quiz is None:
+            return
+            
         self.total_perguntas_respondidas += 1
         
         if resposta_correta:
             self.total_acertos += 1
             if self.inimigo_ativo.perder_vida():
-                self.inimigos.remove(self.inimigo_ativo)
-                self.total_inimigos_derrotados += 1
-                pontos = 10
+                # Remove o inimigo apenas quando todas as vidas acabam
+                if self.inimigo_ativo in self.inimigos:  # Verifica se ainda está na lista
+                    self.inimigos.remove(self.inimigo_ativo)
+                    self.total_inimigos_derrotados += 1
+                pontos = 10 * self.config_fase.vidas_inimigo  # Mais pontos para inimigos com mais vidas
                 self.pontuacao_total += pontos
                 self.pontuacao_sessao += pontos
                 
-                if len(self.inimigos) < 3:
+                # Adiciona novo inimigo se houver poucos no labirinto
+                if len(self.inimigos) < max(3, self.config_fase.num_inimigos // 2):
                     self.inimigos.append(Inimigo(self.labirinto, self.config_fase.vidas_inimigo))
             else:
-                self.inimigo_ativo.teleportar(self.labirinto)
+                # Inimigo perde vida mas continua no mesmo lugar
                 pontos = 5
                 self.pontuacao_total += pontos
                 self.pontuacao_sessao += pontos
         else:
+            # Jogador erra e perde vida
             if self.jogador.perder_vida():
                 self.salvar_progresso()
                 self.estado = "GAME_OVER"
                 return
-            self.inimigo_ativo.teleportar(self.labirinto)
         
         self.interface_quiz = None
         self.inimigo_ativo = None
@@ -715,7 +752,7 @@ class Jogo:
         )
         pygame.draw.rect(tela, VERDE, rect_saida)
         
-        # Desenhar inimigos
+        # Desenhar inimigos com cores diferentes baseadas nas vidas
         for inimigo in self.inimigos:
             rect_inimigo = pygame.Rect(
                 offset_x + inimigo.x * self.tamanho_celula + 2,
@@ -723,8 +760,9 @@ class Jogo:
                 self.tamanho_celula - 4,
                 self.tamanho_celula - 4
             )
-            pygame.draw.rect(tela, VERMELHO, rect_inimigo)
+            pygame.draw.rect(tela, inimigo.cor, rect_inimigo)
             
+            # Mostra as vidas do inimigo se for maior que 1
             if inimigo.vidas > 1:
                 texto_vida = fonte_pequena.render(str(inimigo.vidas), True, BRANCO)
                 tela.blit(texto_vida, (rect_inimigo.centerx - 5, rect_inimigo.centery - 8))
@@ -768,6 +806,11 @@ def desenhar_instrucoes(tela):
         "  - P: Pausar jogo",
         "  - S: Salvar progresso manualmente",
         "  - ESC: Menu principal",
+        "",
+        "SISTEMA DE INIMIGOS:",
+        "  - Fases 1-3: Inimigos vermelhos (1 vida, sem tempo)",
+        "  - Fases 4-7: Inimigos laranjas (3 vidas, 15s para responder)",
+        "  - Fases 8+: Inimigos roxos (5 vidas, 10s para responder)",
         "",
         "SISTEMA DE SAVE:",
         "  - O progresso é salvo automaticamente ao avançar de fase",
@@ -930,6 +973,7 @@ def main():
             elif jogo.estado in ["INSTRUCOES", "ESTATISTICAS"]:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
+                        jogo.inicializar_menus()
                         jogo.estado = "MENU"
             
             #pausa
@@ -943,6 +987,7 @@ def main():
                         mensagem_save_sucesso = sucesso
                     elif event.key == pygame.K_ESCAPE:
                         jogo.salvar_progresso()
+                        jogo.inicializar_menus()
                         jogo.estado = "MENU"
             
             # gameover
@@ -953,6 +998,7 @@ def main():
                         jogo = Jogo()
                         jogo.estado = "JOGANDO"
                     elif event.key == pygame.K_ESCAPE:
+                        jogo.inicializar_menus()
                         jogo.estado = "MENU"
             
             # Jogo normal
@@ -966,6 +1012,7 @@ def main():
                         mensagem_save_sucesso = sucesso
                     elif event.key == pygame.K_ESCAPE:
                         jogo.salvar_progresso()
+                        jogo.inicializar_menus()
                         jogo.estado = "MENU"
             
             # Quiz com navegação por mouse e teclado
@@ -994,9 +1041,10 @@ def main():
                 if moveu:
                     ultimo_movimento = agora
             
-            inimigo_colidido = jogo.verificar_colisao()
-            if inimigo_colidido:
-                jogo.iniciar_quiz(inimigo_colidido)
+            if jogo.estado == "JOGANDO":  # Verifica novamente pois pode ter mudado
+                inimigo_colidido = jogo.verificar_colisao()
+                if inimigo_colidido:
+                    jogo.iniciar_quiz(inimigo_colidido)
             
             if jogo.verificar_vitoria():
                 jogo.estado = "VITORIA_FASE"
