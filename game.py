@@ -34,6 +34,23 @@ LARANJA = (255, 165, 0)
 VERDE_CLARO = (144, 238, 144)
 AZUL_CLARO = (173, 216, 230)
 
+# Carregamento das sprites
+def carregar_sprites():
+    try:
+        sprites = {
+            'jogador': pygame.image.load("sprites/person.png"),
+            'inimigo1': pygame.image.load("sprites/inimigo1.png"),  # Vermelho
+            'inimigo2': pygame.image.load("sprites/inimigo2.png"),  # Laranja
+            'inimigo3': pygame.image.load("sprites/inimigo3.png")   # Roxo
+        }
+        return sprites
+    except pygame.error as e:
+        print(f"Erro ao carregar sprites: {e}")
+        return None
+
+# Carrega as sprites globalmente
+SPRITES = carregar_sprites()
+
 # aqui é as configurações das fases
 class ConfiguracaoFase:
     def __init__(self, numero_fase):
@@ -406,17 +423,21 @@ class Inimigo:
     def __init__(self, labirinto, vidas=1):
         self.vidas = vidas
         self.vidas_maximas = vidas
-        self.cor = self._definir_cor()
+        self._definir_cor_e_sprite()
         self._posicionar_no_labirinto(labirinto)
     
-    # Define a cor baseada no número de vidas
-    def _definir_cor(self):
-        if self.vidas == 1:
-            return VERMELHO  # 1 vida: vermelho
-        elif self.vidas == 3:
-            return LARANJA   # 3 vidas: laranja
-        else:
-            return ROXO      # 5 vidas: roxo
+    # Define sprite e cor aleatórias
+    def _definir_cor_e_sprite(self):
+        # Escolhe uma sprite aleatória das 3 disponíveis
+        sprite_opcoes = [
+            {'sprite_key': 'inimigo1', 'cor': VERMELHO},
+            {'sprite_key': 'inimigo2', 'cor': LARANJA},
+            {'sprite_key': 'inimigo3', 'cor': ROXO}
+        ]
+        
+        escolha = random.choice(sprite_opcoes)
+        self.sprite_key = escolha['sprite_key']
+        self.cor = escolha['cor']
     
     # posiciona o inimigo aleatoriamente no labirinto
     def _posicionar_no_labirinto(self, labirinto):
@@ -655,7 +676,7 @@ class Jogo:
     def iniciar_quiz(self, inimigo):
         if self.interface_quiz is not None or self.estado == "QUIZ":
             return
-            
+
         pergunta, resposta = self.gerador_quiz.gerar_pergunta()
         alternativas = self.gerador_quiz.gerar_alternativas(resposta)
         self.interface_quiz = InterfaceQuiz(
@@ -752,29 +773,49 @@ class Jogo:
         )
         pygame.draw.rect(tela, VERDE, rect_saida)
         
-        # Desenhar inimigos com cores diferentes baseadas nas vidas
+        # Desenhar inimigos com sprites
         for inimigo in self.inimigos:
             rect_inimigo = pygame.Rect(
-                offset_x + inimigo.x * self.tamanho_celula + 2,
-                offset_y + inimigo.y * self.tamanho_celula + 2,
-                self.tamanho_celula - 4,
-                self.tamanho_celula - 4
+                offset_x + inimigo.x * self.tamanho_celula,
+                offset_y + inimigo.y * self.tamanho_celula,
+                self.tamanho_celula,
+                self.tamanho_celula
             )
-            pygame.draw.rect(tela, inimigo.cor, rect_inimigo)
+            
+            # Usar sprite se disponível, senão usar cor
+            if SPRITES and inimigo.sprite_key in SPRITES:
+                sprite = pygame.transform.scale(SPRITES[inimigo.sprite_key], 
+                                              (self.tamanho_celula - 4, self.tamanho_celula - 4))
+                tela.blit(sprite, (rect_inimigo.x + 2, rect_inimigo.y + 2))
+            else:
+                # Fallback para cor se sprite não carregar
+                pygame.draw.rect(tela, inimigo.cor, 
+                                (rect_inimigo.x + 2, rect_inimigo.y + 2, 
+                                 self.tamanho_celula - 4, self.tamanho_celula - 4))
             
             # Mostra as vidas do inimigo se for maior que 1
             if inimigo.vidas > 1:
                 texto_vida = fonte_pequena.render(str(inimigo.vidas), True, BRANCO)
                 tela.blit(texto_vida, (rect_inimigo.centerx - 5, rect_inimigo.centery - 8))
         
-        # Desenhar jogador
+        # Desenhar jogador com sprite
         rect_jogador = pygame.Rect(
-            offset_x + self.jogador.x * self.tamanho_celula + 2,
-            offset_y + self.jogador.y * self.tamanho_celula + 2,
-            self.tamanho_celula - 4,
-            self.tamanho_celula - 4
+            offset_x + self.jogador.x * self.tamanho_celula,
+            offset_y + self.jogador.y * self.tamanho_celula,
+            self.tamanho_celula,
+            self.tamanho_celula
         )
-        pygame.draw.rect(tela, AZUL, rect_jogador)
+
+        # Usar sprite se disponível, senão usar cor
+        if SPRITES and 'jogador' in SPRITES:
+            sprite = pygame.transform.scale(SPRITES['jogador'], 
+                                          (self.tamanho_celula - 4, self.tamanho_celula - 4))
+            tela.blit(sprite, (rect_jogador.x + 2, rect_jogador.y + 2))
+        else:
+            # Fallback para cor se sprite não carregar
+            pygame.draw.rect(tela, AZUL, 
+                            (rect_jogador.x + 2, rect_jogador.y + 2, 
+                             self.tamanho_celula - 4, self.tamanho_celula - 4))
         
         # Instruções pra ficar no rodapé do jogo
         instrucoes = [
@@ -1088,5 +1129,6 @@ def main():
         pygame.display.flip()
         clock.tick(60)
 
+# executar o jogo
 if __name__ == "__main__":
     main()
